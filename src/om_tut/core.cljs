@@ -9,12 +9,12 @@
 
 ;; define your app data so that it doesn't get over-written on reload
 
-(def app-config { :current-level 0
+(def app-config {:current-level 0
                  :levels [{:name "Level 1"
                            :hero-pos {:x 6 :y 3}
                            :structure [[1 1 1 1 1 1 1 1]
-                                       [1 0 0 0 0 3 0 1]
-                                       [1 0 2 0 0 0 0 1]
+                                       [1 0 0 0 0 0 0 1]
+                                       [1 0 2 0 0 3 0 1]
                                        [1 0 3 0 0 2 4 1]
                                        [1 0 0 0 0 0 0 1]
                                        [1 1 1 1 1 1 1 1]]}
@@ -24,8 +24,19 @@
                                        [1 0 0 1 1 1 1 1] 
                                        [1 0 2 0 0 3 0 1] 
                                        [1 0 3 0 0 2 4 1] 
-                                       [1 1 1 0 0 1 1 1] 
-                                       [0 0 1 1 1 1 0 0]]}]})
+                                       [1 1 1 0 0 0 1 1] 
+                                       [0 0 1 1 1 1 0 0]]}
+                          {:name "Level 3"
+                           :hero-pos {:x 2 :y 2}
+                           :structure [[1 1 1 1 1 1 1 1] 
+                                       [1 1 1 0 0 0 1 1] 
+                                       [1 2 4 3 0 0 1 1] 
+                                       [1 1 1 0 3 2 1 1] 
+                                       [1 2 1 1 3 0 1 1] 
+                                       [1 0 0 0 2 0 1 1]
+                                       [1 3 0 3 3 3 2 1]
+                                       [1 0 0 0 2 0 0 1]
+                                       [1 1 1 1 1 1 1 1]]}]})
 
 (defn proc-rows [row]
   (mapv (fn [tile] {:elements (if (= tile 0) [tile] [0 tile]) }) row))
@@ -33,13 +44,14 @@
 (defn proc-structure [structure] 
   (mapv proc-rows structure))
 
-(defn init-state [config level]
-  (let [lev (get (:levels config) level)]
+(defn init-state [config]
+  (let [lev (get (:levels config) (:current-level config))]
     (assoc lev 
            :structure
-           (proc-structure (:structure lev)))))
+           (proc-structure (:structure lev))
+           :current-level (:current-level config))))
 
-(defonce app-state (atom (init-state app-config 0)))
+(defonce app-state (atom (init-state app-config)))
 
 (defn tile [x y]
   (get-in @app-state [:structure y x :elements]))
@@ -61,8 +73,14 @@
     (reset! app-state new-map)))
 
 (defn move-hero [old-hero-pos new-hero-pos]
-  (move-entity old-hero-pos new-hero-pos 4) 
+  (move-entity old-hero-pos new-hero-pos 4)
   (swap! app-state assoc :hero-pos {:x (:x new-hero-pos) :y (+ (:y new-hero-pos))}))
+
+(defn winning? [state]
+  (empty? (filter (fn [a] (seq (filter #(and (= 2 (second (:elements %))) 
+                                             (not= 3 (last (:elements %)))) 
+                                       a))) 
+                  (:structure state))))
 
 (defn update-state [x y]
   (let [hero-pos (:hero-pos @app-state)
@@ -70,7 +88,9 @@
     (cond (move-is-valid? new-hero-pos) (move-hero hero-pos new-hero-pos)
           (move-is-sobokan? hero-pos new-hero-pos x y) (do (move-entity new-hero-pos (sobokan-cords new-hero-pos x y) 3)
                                                            (move-hero hero-pos new-hero-pos))
-          :else (println "invalid move"))))
+          :else (println "invalid move"))
+    (when (winning? @app-state)
+      (swap! app-state #(init-state (assoc app-config :current-level (inc (:current-level @app-state))))))))
 
 (defn on-keydown [key-code]
   (cond 
@@ -92,8 +112,7 @@
 (om/root
  (fn [data owner]
    (om/component
-    (dom/div #js {:onClick (fn [e] (println "om click handler"))}
-             (dom/h2 nil (:name data))
+    (dom/div (dom/h2 nil (:name data))
              (dom/pre nil (s/join "\n"
                                   (map render-row
                                        (:structure data)))))))
